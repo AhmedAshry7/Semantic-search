@@ -138,9 +138,6 @@ class IVF:
                 for j in cluster:
                     candidateVectorsIds.add(j)
         pairs=self.searchInCandidates(query=query, top_k=top_k, clustersindexes=candidateVectorsIds)
-        print(pairs)
-        print("seperator")
-        print([pair[1] for pair in pairs])
         return [pair[1] for pair in pairs]
 
   

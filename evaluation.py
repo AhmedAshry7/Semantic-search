@@ -19,13 +19,12 @@ def run_queries(db, np_rows, top_k, num_runs):
         
         tic = time.time()
         db_ids = db.retrieve(query, top_k)
-        print(db_ids)
         toc = time.time()
         run_time = toc - tic
         
         tic = time.time()
         actual_ids = np.argsort(np_rows.dot(query.T).T / (np.linalg.norm(np_rows, axis=1) * np.linalg.norm(query)), axis= 1).squeeze().tolist()[::-1]
-        print(actual_ids)
+        #print(actual_ids)
         toc = time.time()
         np_run_time = toc - tic
         

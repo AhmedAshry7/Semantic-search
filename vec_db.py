@@ -60,7 +60,7 @@ class VecDB:
         return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        self.ivfflat.search(query,top_k=top_k, nprobe=66)
+        return self.ivfflat.search(query,top_k=top_k, nprobe=36) #36 gets zero score (optimal)
         """         
         scores = []
         num_records = self._get_num_records()

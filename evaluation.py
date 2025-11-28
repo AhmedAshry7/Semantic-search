@@ -4,6 +4,7 @@ from vec_db import VecDB
 import time
 from dataclasses import dataclass
 from typing import List
+from memory_profiler import memory_usage
 
 @dataclass
 class Result:
@@ -14,13 +15,20 @@ class Result:
 
 def run_queries(db, np_rows, top_k, num_runs):
     results = []
-    for _ in range(num_runs):
+    max_memory=-1
+    for i in range(num_runs):
         query = np.random.random((1,70))
         
+        memoryBefore=max(memory_usage())
         tic = time.time()
         db_ids = db.retrieve(query, top_k)
         toc = time.time()
+        memoryAfter=max(memory_usage())
+        memoryOccupied=memoryAfter-memoryBefore
         run_time = toc - tic
+        if memoryOccupied > max_memory:
+            max_memory=memoryOccupied
+        print(f"for query {i} time: {run_time} , memory used: {memoryOccupied}")
         
         tic = time.time()
         actual_ids = np.argsort(np_rows.dot(query.T).T / (np.linalg.norm(np_rows, axis=1) * np.linalg.norm(query)), axis= 1).squeeze().tolist()[::-1]
@@ -29,6 +37,7 @@ def run_queries(db, np_rows, top_k, num_runs):
         np_run_time = toc - tic
         
         results.append(Result(run_time, top_k, db_ids, actual_ids))
+    print(f"Max memory: {max_memory}")
     return results
 
 def eval(results: List[Result]):
@@ -53,11 +62,17 @@ def eval(results: List[Result]):
 
     return sum(scores) / len(scores), sum(run_time) / len(run_time)
 
+""" def memory_usage_run_queries(args):
+    global results
+    memoryBefore = max(memory_usage())
+    memoryAfter = memory_usage(proc=(run_queries, args, {}), interval = 1e-3)
+    return results, max(memoryAfter) - memoryBefore """
 
 if __name__ == "__main__":
-    db = VecDB(db_size = 10**6)
+    db = VecDB(db_size = 2*(10**7))
 
     all_db = db.get_all_rows()
 
     res = run_queries(db, all_db, 5, 10)
     print(eval(res))
+    #print(f"memory used: {memory}")

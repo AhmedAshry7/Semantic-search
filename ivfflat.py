@@ -5,6 +5,7 @@ import time
 import os
 import heapq
 import pickle
+import pq
 
 class IVF:
     def __init__(self, db_path,index_path, vecd, k, seed, cpuCores):
@@ -98,6 +99,7 @@ class IVF:
         end=time.time()
         print(f"Time in clustering is {end-start}")
         self._save_clusters(clusters)
+        pq.train(self, M=7)
     
     def compute_similarity_matrix(self,query, centroids):
         if query.ndim == 1:
@@ -132,32 +134,35 @@ class IVF:
         similarities = self.compute_similarity_matrix(query, centroids)
         topN_indices = np.argpartition(similarities, -nprobe,axis=1)[:, -nprobe:]
         topN_indices_1d = topN_indices.flatten()
-        candidateVectorsIds=set()
-        for i in topN_indices_1d:
-                cluster=self._load_cluster(i)
-                for j in cluster:
-                    candidateVectorsIds.add(j)
-        pairs=self.searchInCandidates(query=query, top_k=top_k, clustersindexes=candidateVectorsIds)
-        return [pair[1] for pair in pairs]
+        results = pq.top_k_results(self, query, topN_indices_1d, k=top_k)
+        return [result[1] for result in results]
+
+        # candidateVectorsIds=set()
+        # for i in topN_indices_1d:
+        #         cluster=self._load_cluster(i)
+        #         for j in cluster:
+        #             candidateVectorsIds.add(j)
+        # pairs=self.searchInCandidates(query=query, top_k=top_k, clustersindexes=candidateVectorsIds)
+        # return [result[1] for result in pairs]
+        
 
   
-        
-""" 
-if __name__ == "__main__":
-    rng = np.random.default_rng(1234)
-    vecd = 70
-    N = 1000000
-    nlist = 100
-    X = rng.normal(size=(N, vecd)).astype(np.float32)
-    ids = np.arange(N)
-    # build index
-    ivf = IVF(db_path="",vecd=vecd, k=nlist, seed=42,cpuCores=14)
-    print("Training coarse quantizer...")
-    ivf.fit()
 
-    # create queries (some from the dataset, some random)
-    queries = X[0] + 0.01 * rng.normal(size=(1, vecd))
-    print("Searching...")
-    distances, found_ids = ivf.search(queries, top_k=5, nprobe=4)
-    print("Distances:\n", distances)
-    print("IDs:\n", found_ids) """
+# if __name__ == "__main__":
+#     rng = np.random.default_rng(1234)
+#     vecd = 70
+#     N = 1000000
+#     nlist = 100
+#     X = rng.normal(size=(N, vecd)).astype(np.float32)
+#     ids = np.arange(N)
+#     # build index
+#     ivf = IVF(db_path="",vecd=vecd, k=nlist, seed=42,cpuCores=14)
+#     print("Training coarse quantizer...")
+#     ivf.fit()
+
+#     # create queries (some from the dataset, some random)
+#     queries = X[0] + 0.01 * rng.normal(size=(1, vecd))
+#     print("Searching...")
+#     distances, found_ids = ivf.search(queries, top_k=5, nprobe=4)
+#     print("Distances:\n", distances)
+#     print("IDs:\n", found_ids) 

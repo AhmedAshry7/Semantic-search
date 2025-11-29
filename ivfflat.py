@@ -14,8 +14,6 @@ class IVF:
         self.k=k
         self.seed=seed
         self.cores=cpuCores
-        self.centroids=[]
-        self.clusters=[[] for _ in range(k)]
 
     def _save_centroids(self, centroids: np.ndarray) -> None:
 
@@ -132,6 +130,7 @@ class IVF:
         similarities = self.compute_similarity_matrix(query, centroids)
         topN_indices = np.argpartition(similarities, -nprobe,axis=1)[:, -nprobe:]
         topN_indices_1d = topN_indices.flatten()
+        del centroids
         candidateVectorsIds=set()
         for i in topN_indices_1d:
                 cluster=self._load_cluster(i)

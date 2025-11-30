@@ -5,13 +5,13 @@ from ivfflat import IVF
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
-DIMENSION = 70
+DIMENSION = 64
 
 class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = True, db_size = None) -> None:
         self.db_path = database_file_path
         self.index_path = index_file_path
-        self.ivfflat = IVF(db_path = self.db_path,index_path = index_file_path, vecd=DIMENSION, k=1000, seed=DB_SEED_NUMBER, cpuCores=14 )
+        self.ivfflat = IVF(db_path = self.db_path,index_path = index_file_path, vecd=DIMENSION, k=5000, seed=DB_SEED_NUMBER, cpuCores=14, maxRam=50*1024*1024 )
         if new_db:
             if db_size is None:
                 raise ValueError("You need to provide the size of the database")

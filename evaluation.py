@@ -17,7 +17,7 @@ def run_queries(db, np_rows, top_k, num_runs):
     results = []
     max_memory=-1
     for i in range(num_runs):
-        query = np.random.random((1,70))
+        query = np.random.random((1,64))
         
         memoryBefore=max(memory_usage())
         tic = time.time()
@@ -69,7 +69,7 @@ def eval(results: List[Result]):
     return results, max(memoryAfter) - memoryBefore """
 
 if __name__ == "__main__":
-    db = VecDB(db_size = 2*(10**7))
+    db = VecDB(database_file_path="OpenSubtitles_en_20M_emb_64.dat")
 
     all_db = db.get_all_rows()
 

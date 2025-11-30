@@ -4,16 +4,18 @@ from sklearn.cluster import MiniBatchKMeans
 import time
 import os
 import heapq
+from math import floor
 import pickle
 
 class IVF:
-    def __init__(self, db_path,index_path, vecd, k, seed, cpuCores):
+    def __init__(self, db_path,index_path, vecd, k, seed, cpuCores, maxRam):
         self.db_path=db_path
         self.index_path=index_path
         self.vecd=vecd
         self.k=k
         self.seed=seed
         self.cores=cpuCores
+        self.maxRam=maxRam
 
     def _save_centroids(self, centroids: np.ndarray) -> None:
 
@@ -80,10 +82,12 @@ class IVF:
         self._save_centroids(centroids)
         normCentroids=np.linalg.norm(centroids, axis=1, keepdims=True)
         normalizedCentroids=centroids/normCentroids
-        #batchSize = floor( (limit_bytes * safety) / (bytes_per_float * (D + n_clusters)) )
-        #batchSize= floor ((50MB*0.8)/(4*(70+100)))=60K if n_clusters 64 then 76K
+        # Main size is size of batch od vectors that will be retieved and the computes similarity matrix
+        # Ram taken= batchsize * dimension * bytes per float + batch * n_clusters * bytes per float
+        # batchSize = floor( (limit_bytes * safety) / (bytes_per_float * (D + n_clusters)) )
+        batchSize= floor((self.maxRam*0.8)/(4*(self.vecd+self.k)))
+        print(batchSize)
         start=time.time()
-        batchSize= 60000
         clusters=[[]for _ in range(self.k)]
         for i in range(0,len(db),batchSize):
             batchedVectors=db[i:i+batchSize]

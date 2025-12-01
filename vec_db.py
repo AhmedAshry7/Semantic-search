@@ -7,46 +7,20 @@ DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
 DIMENSION = 64
 
+        
 class VecDB:
-    def __init__(self, database_file_path="saved_db.dat", index_file_path="index.dat", new_db=True, db_size=None, database_embedded_file_path=None):
-
+    def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = True, db_size = None) -> None:
         self.db_path = database_file_path
         self.index_path = index_file_path
-        self.ivfflat = IVF(db_path=self.db_path, index_path=self.index_path, vecd=DIMENSION, k=2000, seed=DB_SEED_NUMBER, cpuCores=14, maxRam=50 * 1024 * 1024)
-        # If an embedded DB is provided, read exactly db_size rows from it using memmap
-        if database_embedded_file_path is not None:
-            if db_size is None:
-                raise ValueError("db_size must be provided when using database_embedded_file_path")
+        self.ivfflat = IVF(db_path=self.db_path, index_path=self.index_path, vecd=DIMENSION, k=6000, seed=DB_SEED_NUMBER, cpuCores=14, maxRam=50 * 1024 * 1024)
 
-            if not os.path.exists(database_embedded_file_path):
-                raise FileNotFoundError(f"Embedded DB file does not exist: {database_embedded_file_path}")
-
-            # Read data from the embedded DB
-            src = np.memmap(database_embedded_file_path, dtype=np.float32, mode="r", shape=(db_size,DIMENSION))
-
-            # Create destination DB file and write the content into it
-            dst = np.memmap(self.db_path, dtype=np.float32, mode="w+", shape=(db_size,DIMENSION))
-            dst[:] = src[:]
-
-            # Close memmaps
-            del src
-            del dst
-            if new_db:
-                self._build_index()
-            return
-
-        # If new database creation is required
         if new_db:
             if db_size is None:
-                raise ValueError("You need to provide db_size when creating a new database")
-
+                raise ValueError("You need to provide the size of the database")
+            # delete the old DB file if exists
             if os.path.exists(self.db_path):
                 os.remove(self.db_path)
-
             self.generate_database(db_size)
-
-        self.db_size = db_size
-
     
     def generate_database(self, size: int) -> None:
         rng = np.random.default_rng(DB_SEED_NUMBER)
@@ -88,10 +62,15 @@ class VecDB:
         return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        return self.ivfflat.search(query,top_k=top_k, nprobe=3) #1M rows: k=1500, nprobe 15 -> Score (0,2.313)
-                                                                 #10M rows: k=2000, nptobe=3 ->Score (-51.1,2.022)
-                                                                 #15M rows:
-                                                                 #20M rows:
+        return self.ivfflat.search(query,top_k=top_k, nprobe=15) 
+    #IVF flat alone
+    #1M rows: k= 1500, nprobe= 15 -> Score (0,2.313)
+    #10M rows: k= 2000, nprobe= 3 -> Score (-51.1,2.022)
+    #20M rows: k= 6000, nprobe= 15 -> Score (-107.8,5.905)
+    #IVF flat with PQ
+    #1M rows: k= , nprobe= , M= -> Score (,)
+    #10M rows: k= , nprobe= , M= -> Score (,)
+    #20M rows: k= , nprobe= , M= -> Score (,)
         """         
         scores = []
         num_records = self._get_num_records()

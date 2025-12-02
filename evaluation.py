@@ -5,9 +5,6 @@ import time
 from dataclasses import dataclass
 from typing import List
 from memory_profiler import memory_usage
-import os
-
-DIMENSION = 64
 
 @dataclass
 class Result:
@@ -71,51 +68,8 @@ def eval(results: List[Result]):
     memoryAfter = memory_usage(proc=(run_queries, args, {}), interval = 1e-3)
     return results, max(memoryAfter) - memoryBefore """
 
-def create_other_DB_size(input_file, output_file, target_rows, embedding_dim = DIMENSION):
-    # Configuration
-    dtype = 'float32'
-
-    # 1. Determine the shape of the source file
-    # We calculate rows based on file size to be safe, or you can hardcode 20_000_000
-    file_size_bytes = os.path.getsize(input_file)
-    itemsize = np.dtype(dtype).itemsize
-    total_rows = file_size_bytes // (embedding_dim * itemsize)
-
-    print(f"Source detected: {total_rows} rows.")
-
-    # 2. Open source in read mode ('r')
-    # This uses almost 0 RAM, it just points to the file on disk
-    source_memmap = np.memmap(
-        input_file,
-        dtype=dtype,
-        mode='r',
-        shape=(total_rows, embedding_dim)
-    )
-
-    # 3. Create the new file in write mode ('w+')
-    # We define the shape as the target size (1M, 64)
-    dest_memmap = np.memmap(
-        output_file,
-        dtype=dtype,
-        mode='w+',
-        shape=(target_rows, embedding_dim)
-    )
-
-    # 4. Copy the data
-    # This transfers the binary blocks directly
-    print("Copying data...")
-    dest_memmap[:] = source_memmap[:target_rows]
-
-    # 5. Flush to save changes to disk
-    dest_memmap.flush()
-
-    print(f"Success! Saved first {target_rows} rows to {output_file}")
-
-
 if __name__ == "__main__":
-    db_s=10**6
-    create_other_DB_size(input_file="OpenSubtitles_en_20M_emb_64.dat", output_file="saved_db.dat", target_rows=db_s)
-    db = VecDB(db_size=db_s)
+    db = VecDB(database_file_path="OpenSubtitles_en_20M_emb_64.dat")
 
     all_db = db.get_all_rows()
 

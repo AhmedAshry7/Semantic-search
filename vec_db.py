@@ -1,7 +1,10 @@
-from typing import Dict, List, Annotated
+from typing import Dict, List, Annotated, Optional
 import numpy as np
 import os
 from ivfflat import IVF
+from contextlib import nullcontext
+
+from memory_logging import MemoryReporter
 
 DB_SEED_NUMBER = 42
 ELEMENT_SIZE = np.dtype(np.float32).itemsize
@@ -14,9 +17,10 @@ Z=400
 N_PROBE=37
 
 class VecDB:
-    def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = False, db_size = None) -> None:
+    def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = False, db_size = None, reporter: Optional[MemoryReporter] = None) -> None:
         self.db_path = database_file_path
         self.index_path = index_file_path
+        self.reporter = reporter
         self.ivfflat = IVF(db_path = self.db_path,index_path = index_file_path, vecd=DIMENSION, k=K, seed=DB_SEED_NUMBER, cpuCores=14 )
         if new_db:
             if db_size is None:
@@ -63,10 +67,14 @@ class VecDB:
         # Take care this load all the data in memory
         num_records = self._get_num_records()
         vectors = np.memmap(self.db_path, dtype=np.float32, mode='r', shape=(num_records, DIMENSION))
-        return np.array(vectors)
+        ctx = self.reporter.track("vecdb:get_all_rows") if self.reporter else nullcontext()
+        with ctx:
+            return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        return self.ivfflat.search(query,top_k=top_k, nprobe=N_PROBE, Z=Z, index_file_path=self.index_path) #1M rows: 37 gets zero score (optimal) but is on edge of time better use lower nprobe
+        ctx = self.reporter.track("vecdb:retrieve") if getattr(self, "reporter", None) else nullcontext()
+        with ctx:
+            return self.ivfflat.search(query,top_k=top_k, nprobe=N_PROBE, Z=Z, index_file_path=self.index_path) #1M rows: 37 gets zero score (optimal) but is on edge of time better use lower nprobe
                                                                  #10M rows: 8
                                                                  #15M rows:
                                                                  #20M rows:

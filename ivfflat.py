@@ -7,6 +7,12 @@ import heapq
 import pickle
 import pq
 
+M=7
+K=256
+Z=200
+SAMPLE_RATIO=0.1
+
+
 class IVF:
     def __init__(self, db_path,index_path, vecd, k, seed, cpuCores):
         self.db_path=db_path
@@ -71,7 +77,7 @@ class IVF:
         vector=np.memmap(filename=self.db_path,dtype=np.float32, mode='r', shape=(num_records,self.vecd))
         return(np.array(vector))
 
-    def fit(self):
+    def fit(self, M=7, PQ_K=256, SAMPLE_RATIO=0.1):
         db=self._getAllRows()
         start=time.time()
         model = MiniBatchKMeans(n_clusters=self.k, random_state=42, batch_size=256*self.cores, max_iter=300)
@@ -99,7 +105,7 @@ class IVF:
         end=time.time()
         print(f"Time in clustering is {end-start}")
         self._save_clusters(clusters)
-        pq.train(self, M=7)
+        pq.train(self, M=M, K=PQ_K, SAMPLE_RATIO=SAMPLE_RATIO)
     
     def compute_similarity_matrix(self,query, centroids):
         if query.ndim == 1:
@@ -129,12 +135,12 @@ class IVF:
             pairs.append((similarity, vecid))
         return heapq.nlargest(top_k,pairs)
     
-    def search(self, query, top_k, nprobe):
+    def search(self, query, top_k, nprobe, Z=200):
         centroids=self._load_centroids()
         similarities = self.compute_similarity_matrix(query, centroids)
         topN_indices = np.argpartition(similarities, -nprobe,axis=1)[:, -nprobe:]
         topN_indices_1d = topN_indices.flatten()
-        results = pq.top_k_results(self, query, topN_indices_1d, k=top_k)
+        results = pq.top_k_results(self, query, topN_indices_1d, k=top_k, Z=Z)
         return [result[1] for result in results]
 
         # candidateVectorsIds=set()

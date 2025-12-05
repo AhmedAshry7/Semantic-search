@@ -229,6 +229,7 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
         del packed_codes_mmap
 
     del codebook
+    del batch_codes
 
     # Turn negative distances back to positive and sort, inplace to save mem
     for i in range(len(current_results)):
@@ -241,19 +242,30 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
 def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):
     current_results = retrieve(ivfflat, query_vector, nearest_buckets, ivfflat._load_centroids(), index_file_path, Z=Z)
 
+    num_records = ivfflat._get_num_records()
+    mmap_db = np.memmap(ivfflat.db_path, dtype=np.float32, mode='r', shape=(num_records, ivfflat.vecd))
+
+    query_vector = np.asarray(query_vector).flatten()
+    norm_query = np.linalg.norm(query_vector)
+
     for i in range(len(current_results)):
-        dist, vec_id = current_results[i]
-        vector = ivfflat._getRow(vec_id)
+            _, vec_id = current_results[i]
+            
+            vector = np.array(mmap_db[vec_id]) 
 
-        dot_product = np.dot(query_vector, vector)
-        norm_query = np.linalg.norm(query_vector)
-        norm_vector = np.linalg.norm(vector)
-        cosine_similarity = dot_product / (norm_query * norm_vector)
+            dot_product = np.dot(query_vector, vector)
+            norm_vector = np.linalg.norm(vector)
+            
+            if norm_query == 0 or norm_vector == 0:
+                cosine_similarity = 0
+            else:
+                cosine_similarity = dot_product / (norm_query * norm_vector)
 
-        #inplace to save mem
-        current_results[i] = (cosine_similarity, vec_id)
+            current_results[i] = (cosine_similarity, vec_id)
+            
+            del vector
 
-        del vector
+    del mmap_db
     
     current_results.sort(key=lambda x: x[0], reverse=True)
     return current_results[:k]

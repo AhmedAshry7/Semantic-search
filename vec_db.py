@@ -10,8 +10,8 @@ K=4000
 M=8
 PQK=16
 SAMPLE_RATIO=0.4
-Z=2500
-N_PROBE=250
+Z=400
+N_PROBE=37
 
 class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = False, db_size = None) -> None:

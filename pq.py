@@ -177,15 +177,15 @@ def compute_distance_table(query_vector, centroid_vector, codebook):
     
     return dist_table
 
-def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, Z=200):
-    codebook = load_memmap("index.dat/pq_codebook.dat")
+def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_path, Z=200):
+    codebook = load_memmap(index_file_path + "/pq_codebook.dat")
     PQ_K = codebook.shape[1] 
 
     if PQ_K <= 16:
-        packed_codes = load_memmap("index.dat/pq_codes.dat", mode='r') 
+        packed_codes = load_memmap(index_file_path + "/pq_codes.dat", mode='r') 
         codes = unpack_codes(np.array(packed_codes)) 
     else:
-        codes = load_memmap("index.dat/pq_codes.dat", mode='r')
+        codes = load_memmap(index_file_path + "/pq_codes.dat", mode='r')
     current_results = [] 
     for bucket_id in nearest_buckets:
         
@@ -211,9 +211,9 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, Z=200):
         current_results = current_results[:Z]
     return current_results
 
-def top_k_results(ivfflat, query_vector, nearest_buckets, k=10, Z=200):
+def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):
     results_heap = []
-    current_results = retrieve(ivfflat, query_vector, nearest_buckets, ivfflat._load_centroids(), Z=Z)
+    current_results = retrieve(ivfflat, query_vector, nearest_buckets, ivfflat._load_centroids(), index_file_path, Z=Z)
     for dist, vec_id in current_results:
         vector = ivfflat._getRow(vec_id)
 

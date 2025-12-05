@@ -135,12 +135,12 @@ class IVF:
             pairs.append((similarity, vecid))
         return heapq.nlargest(top_k,pairs)
     
-    def search(self, query, top_k, nprobe, Z=200):
+    def search(self, query, top_k, nprobe, index_file_path, Z=200):
         centroids=self._load_centroids()
         similarities = self.compute_similarity_matrix(query, centroids)
         topN_indices = np.argpartition(similarities, -nprobe,axis=1)[:, -nprobe:]
         topN_indices_1d = topN_indices.flatten()
-        results = pq.top_k_results(self, query, topN_indices_1d, k=top_k, Z=Z)
+        results = pq.top_k_results(self, query, topN_indices_1d, index_file_path, k=top_k, Z=Z)
         return [result[1] for result in results]
 
         # candidateVectorsIds=set()

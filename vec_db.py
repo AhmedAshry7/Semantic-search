@@ -10,8 +10,8 @@ K=4000
 M=8
 PQK=16
 SAMPLE_RATIO=0.4
-Z=2500
-N_PROBE=250
+Z=400
+N_PROBE=37
 
 class VecDB:
     def __init__(self, database_file_path = "saved_db.dat", index_file_path = "index.dat", new_db = False, db_size = None) -> None:
@@ -66,7 +66,7 @@ class VecDB:
         return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        return self.ivfflat.search(query,top_k=top_k, nprobe=N_PROBE, Z=Z) #1M rows: 37 gets zero score (optimal) but is on edge of time better use lower nprobe
+        return self.ivfflat.search(query,top_k=top_k, nprobe=N_PROBE, Z=Z, index_file_path=self.index_path) #1M rows: 37 gets zero score (optimal) but is on edge of time better use lower nprobe
                                                                  #10M rows: 8
                                                                  #15M rows:
                                                                  #20M rows:

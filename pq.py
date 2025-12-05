@@ -228,23 +228,32 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
     else:
         del packed_codes_mmap
 
-    # Turn negative distances back to positive and sort
-    final_results = [(-d, vid) for d, vid in current_results]
-    final_results.sort(key=lambda x: x[0])
+    del codebook
+
+    # Turn negative distances back to positive and sort, inplace to save mem
+    for i in range(len(current_results)):
+        current_results[i] =(-current_results[i][0], current_results[i][1])
+
+    current_results.sort(key=lambda x: x[0])
     
-    return final_results
+    return current_results
 
 def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):
-    results_heap = []
     current_results = retrieve(ivfflat, query_vector, nearest_buckets, ivfflat._load_centroids(), index_file_path, Z=Z)
-    for dist, vec_id in current_results:
+
+    for i in range(len(current_results)):
+        dist, vec_id = current_results[i]
         vector = ivfflat._getRow(vec_id)
 
         dot_product = np.dot(query_vector, vector)
         norm_query = np.linalg.norm(query_vector)
         norm_vector = np.linalg.norm(vector)
         cosine_similarity = dot_product / (norm_query * norm_vector)
-        results_heap.append((cosine_similarity, vec_id))
+
+        #inplace to save mem
+        current_results[i] = (cosine_similarity, vec_id)
+
+        del vector
     
-    results_heap.sort(key=lambda x: x[0], reverse=True)
-    return results_heap[:k]
+    current_results.sort(key=lambda x: x[0], reverse=True)
+    return current_results[:k]

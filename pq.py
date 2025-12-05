@@ -181,34 +181,45 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
     codebook = load_memmap(index_file_path + "/pq_codebook.dat")
     PQ_K = codebook.shape[1] 
 
+    # Don't unpack all causes mem leak
     if PQ_K <= 16:
-        packed_codes = load_memmap(index_file_path + "/pq_codes.dat", mode='r') 
-        codes = unpack_codes(np.array(packed_codes)) 
+        packed_codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r') 
     else:
-        codes = load_memmap(index_file_path + "/pq_codes.dat", mode='r')
+        codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r')
+
     current_results = [] 
+
     for bucket_id in nearest_buckets:
         
         centroid_vector = all_centroids[bucket_id]
         
         dist_table = compute_distance_table(query_vector, centroid_vector, codebook)
         
-
         vector_ids = ivfflat._load_cluster(bucket_id)
         
-        for vec_id in vector_ids:
-            
+        if len(vector_ids) == 0:
+            continue
 
+        if PQ_K <= 16:
+            batch_packed = packed_codes_mmap[vector_ids] 
+            
+            batch_codes = unpack_codes(batch_packed)
+        else:
+            # Just read the specific rows
+            batch_codes = codes_mmap[vector_ids]
+
+        for i, vec_id in enumerate(vector_ids):
+            
+            code_row = batch_codes[i] 
+            
             dist = 0
-            for m in range(len(codes[0])):  
-                dist += dist_table[m][codes[vec_id][m]]
+            for m in range(len(code_row)):  
+                dist += dist_table[m][code_row[m]]
             
-
             current_results.append((dist, vec_id))
         
-        # Momken ne7awel n optimize hena ba3d keda
-        current_results.sort(key=lambda x: x[0])
-        current_results = current_results[:Z]
+    current_results.sort(key=lambda x: x[0])
+    current_results = current_results[:Z]
     return current_results
 
 def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):

@@ -193,7 +193,7 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
     current_results = []
     
     # Define batch size for processing vectors (tune based on your needs)
-    BATCH_SIZE = 500
+    BATCH_SIZE = 1000
 
     for bucket_id in nearest_buckets:
         centroid_vector = all_centroids[bucket_id]

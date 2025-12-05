@@ -181,19 +181,15 @@ def compute_distance_table(query_vector, centroid_vector, codebook):
 
 def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_path, Z=200):
     codebook = load_memmap(index_file_path + "/pq_codebook.dat")
-    PQ_K = codebook.shape[1]
-    M = codebook.shape[0]
-    
+    PQ_K = codebook.shape[1] 
+
     # Don't unpack all causes mem leak
     if PQ_K <= 16:
-        packed_codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r')
+        packed_codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r') 
     else:
         codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r')
 
-    current_results = []
-    
-    # Define batch size for processing vectors (tune based on your needs)
-    BATCH_SIZE = 1000
+    current_results = [] 
 
     for bucket_id in nearest_buckets:
         centroid_vector = all_centroids[bucket_id]
@@ -202,47 +198,42 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
         
         if len(vector_ids) == 0: continue
 
-        # Process in batches to avoid unpacking entire bucket at once
-        for batch_start in range(0, len(vector_ids), BATCH_SIZE):
-            batch_end = min(batch_start + BATCH_SIZE, len(vector_ids))
-            batch_vec_ids = vector_ids[batch_start:batch_end]
+        if PQ_K <= 16:
+            # Just unpack the specific rows
+            batch_packed = packed_codes_mmap[vector_ids] 
+            batch_codes = unpack_codes(batch_packed)
+        else:
+            # Just read the specific rows
+            batch_codes = codes_mmap[vector_ids]
+
+        for i, vec_id in enumerate(vector_ids):
+            code_row = batch_codes[i] 
+            dist = 0.0
             
-            if PQ_K <= 16:
-                batch_packed = packed_codes_mmap[batch_vec_ids]
-                batch_codes = unpack_codes(batch_packed)
-                del batch_packed  # Explicit cleanup
+            for m in range(len(code_row)):  
+                dist += dist_table[m][code_row[m]]
+            
+            # 1. If we haven't found Z items yet, just add it.
+            if len(current_results) < Z:
+                heapq.heappush(current_results, (-dist, vec_id))
+            
             else:
-                batch_codes = codes_mmap[batch_vec_ids]
-
-            for i, vec_id in enumerate(batch_vec_ids):
-                code_row = batch_codes[i]
-                
-                # Vectorized distance computation
-                dist = np.sum(dist_table[np.arange(M), code_row])
-                
-                if len(current_results) < Z:
-                    heapq.heappush(current_results, (-dist, vec_id))
-                elif -dist > current_results[0][0]:
+                if -dist > current_results[0][0]:
+                    #pops the worst and push the new one in one go
                     heapq.heapreplace(current_results, (-dist, vec_id))
-            
-            # Cleanup batch data
-            del batch_codes
         
-        # Cleanup distance table after processing bucket
-        del dist_table
-
-    # Cleanup memmap
+    # CLEANUP
     if PQ_K > 16:
         del codes_mmap
     else:
         del packed_codes_mmap
-    
+
     del codebook
 
-    # Convert to positive distances and sort in-place
+    # Turn negative distances back to positive and sort, inplace to save mem
     for i in range(len(current_results)):
-        current_results[i] = (-current_results[i][0], current_results[i][1])
-    
+        current_results[i] =(-current_results[i][0], current_results[i][1])
+
     current_results.sort(key=lambda x: x[0])
     
     return current_results

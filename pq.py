@@ -3,6 +3,7 @@ from sklearn.cluster import KMeans
 import pickle
 import os
 import random
+import heapq
 
 # Helper functions for memmap operations
 def save_memmap(filename, array):
@@ -177,6 +178,7 @@ def compute_distance_table(query_vector, centroid_vector, codebook):
     
     return dist_table
 
+
 def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_path, Z=200):
     codebook = load_memmap(index_file_path + "/pq_codebook.dat")
     PQ_K = codebook.shape[1] 
@@ -190,37 +192,47 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
     current_results = [] 
 
     for bucket_id in nearest_buckets:
-        
         centroid_vector = all_centroids[bucket_id]
-        
         dist_table = compute_distance_table(query_vector, centroid_vector, codebook)
-        
         vector_ids = ivfflat._load_cluster(bucket_id)
         
-        if len(vector_ids) == 0:
-            continue
+        if len(vector_ids) == 0: continue
 
         if PQ_K <= 16:
+            # Just unpack the specific rows
             batch_packed = packed_codes_mmap[vector_ids] 
-            
             batch_codes = unpack_codes(batch_packed)
         else:
             # Just read the specific rows
             batch_codes = codes_mmap[vector_ids]
 
         for i, vec_id in enumerate(vector_ids):
-            
             code_row = batch_codes[i] 
+            dist = 0.0
             
-            dist = 0
             for m in range(len(code_row)):  
                 dist += dist_table[m][code_row[m]]
             
-            current_results.append((dist, vec_id))
+            # 1. If we haven't found Z items yet, just add it.
+            if len(current_results) < Z:
+                heapq.heappush(current_results, (-dist, vec_id))
+            
+            else:
+                if -dist > current_results[0][0]:
+                    #pops the worst and push the new one in one go
+                    heapq.heapreplace(current_results, (-dist, vec_id))
         
-    current_results.sort(key=lambda x: x[0])
-    current_results = current_results[:Z]
-    return current_results
+    # CLEANUP
+    if PQ_K > 16:
+        del codes_mmap
+    else:
+        del packed_codes_mmap
+
+    # Turn negative distances back to positive and sort
+    final_results = [(-d, vid) for d, vid in current_results]
+    final_results.sort(key=lambda x: x[0])
+    
+    return final_results
 
 def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):
     results_heap = []

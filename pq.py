@@ -195,7 +195,7 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
 
         codes_path = os.path.join(index_file_path, f"pq_codes_cluster_{bucket_id}.dat")
         codes_memmap = load_memmap(codes_path, mode='r')
-        CHUNK = 1024
+        CHUNK = 4096
         for start in range(0, len(vector_ids), CHUNK):
             end = min(start + CHUNK, len(vector_ids))
             chunk_ids = vector_ids[start:end]

@@ -30,9 +30,14 @@ class MemoryReporter:
         self.proc = psutil.Process()
         self.top_lines = top_lines
         self.events: List[MemoryEvent] = []
+        self.lines: List[str] = []
         self._tracemalloc_started = tracemalloc.is_tracing()
         if not self._tracemalloc_started:
             tracemalloc.start(trace_frames)
+
+    def _record(self, line: str) -> None:
+        self.lines.append(line)
+        print(line)
 
     def _fmt_bytes(self, value: int) -> str:
         if value < 1024:
@@ -52,11 +57,12 @@ class MemoryReporter:
 
     def log_snapshot_diff(self, label: str, before, after) -> None:
         diff = after.compare_to(before, "lineno")
-        print(f"\n[MemoryReporter] Hot allocations for '{label}':")
+        header = f"\n[MemoryReporter] Hot allocations for '{label}':"
+        self._record(header)
         for stat in diff[: self.top_lines]:
             size = self._fmt_bytes(stat.size_diff)
             count = stat.count_diff
-            print(f"  {size:>10} | {count:>6}x | {stat.traceback.format()[-1].strip()}")
+            self._record(f"  {size:>10} | {count:>6}x | {stat.traceback.format()[-1].strip()}")
 
     @contextmanager
     def track(self, label: str, emit_tracemalloc: bool = True):
@@ -81,7 +87,7 @@ class MemoryReporter:
             )
             delta_rss = end_rss - start_rss
             delta_uss = end_uss - start_uss
-            print(
+            self._record(
                 f"[MemoryReporter] {label}: RSS {self._fmt_bytes(start_rss)} -> {self._fmt_bytes(end_rss)} "
                 f"(Δ {self._fmt_bytes(delta_rss)}), USS {self._fmt_bytes(start_uss)} -> {self._fmt_bytes(end_uss)} "
                 f"(Δ {self._fmt_bytes(delta_uss)}), took {duration:.3f}s"
@@ -91,23 +97,28 @@ class MemoryReporter:
 
     def summary(self) -> None:
         if not self.events:
-            print("[MemoryReporter] No events recorded.")
+            self._record("[MemoryReporter] No events recorded.")
             return
         worst = sorted(self.events, key=lambda e: e.rss_delta(), reverse=True)[:10]
-        print("\n[MemoryReporter] Top blocks by RSS growth:")
+        self._record("\n[MemoryReporter] Top blocks by RSS growth:")
         for ev in worst:
-            print(
+            self._record(
                 f"  {ev.label:30} | ΔRSS {self._fmt_bytes(ev.rss_delta())} | "
                 f"ΔUSS {self._fmt_bytes(ev.uss_delta())} | {ev.duration:.3f}s"
             )
 
     def current(self) -> None:
         rss, uss = self._mem_info()
-        print(f"[MemoryReporter] Current RSS {self._fmt_bytes(rss)}, USS {self._fmt_bytes(uss)}")
+        self._record(f"[MemoryReporter] Current RSS {self._fmt_bytes(rss)}, USS {self._fmt_bytes(uss)}")
 
     def stop(self) -> None:
         if not self._tracemalloc_started:
             tracemalloc.stop()
+
+    def dump(self, path: str) -> None:
+        with open(path, "w", encoding="utf-8") as f:
+            for line in self.lines:
+                f.write(line + "\n")
 
 
 def make_reporter(top_lines: int = 15) -> MemoryReporter:

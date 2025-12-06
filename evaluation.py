@@ -27,10 +27,10 @@ def run_queries(db, np_rows, top_k, num_runs, reporter: Optional[MemoryReporter]
             toc = time.time()
         run_time = toc - tic
 
-        with reporter.track(f"ground_truth_{i}"):
-            tic = time.time()
-            actual_ids = np.argsort(np_rows.dot(query.T).T / (np.linalg.norm(np_rows, axis=1) * np.linalg.norm(query)), axis= 1).squeeze().tolist()[::-1]
-            toc = time.time()
+        # ground truth is mainly CPU; we skip memory logging per user request
+        tic = time.time()
+        actual_ids = np.argsort(np_rows.dot(query.T).T / (np.linalg.norm(np_rows, axis=1) * np.linalg.norm(query)), axis= 1).squeeze().tolist()[::-1]
+        toc = time.time()
 
         if reporter.events:
             for ev in reporter.events[-2:]:
@@ -117,12 +117,13 @@ def create_other_DB_size(input_file, output_file, target_rows, embedding_dim = D
 
 if __name__ == "__main__":
     reporter = make_reporter(top_lines=25)
-    db = VecDB(db_size = 2*(10**7), reporter=reporter)
+    db = VecDB(db_size = 2*(10**7))
 
     all_db = db.get_all_rows()
 
     res, _ = run_queries(db, all_db, 5, 10, reporter=reporter)
     print(eval(res))
     reporter.summary()
+    reporter.dump("memory_report.txt")
     reporter.stop()
     #print(f"memory used: {memory}")

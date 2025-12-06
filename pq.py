@@ -4,6 +4,7 @@ import pickle
 import os
 import random
 import heapq
+import gc
 
 # Helper functions for memmap operations
 def save_memmap(filename, array):
@@ -194,25 +195,39 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
 
         codes_path = os.path.join(index_file_path, f"pq_codes_cluster_{bucket_id}.dat")
         codes_memmap = load_memmap(codes_path, mode='r')
-
-        # Process each vector individually to avoid loading entire cluster
-        for i, vec_id in enumerate(vector_ids):
+        CHUNK = 4096
+        for start in range(0, len(vector_ids), CHUNK):
+            end = min(start + CHUNK, len(vector_ids))
+            chunk_ids = vector_ids[start:end]
             if PQ_K <= 16:
-                packed_row = np.asarray(codes_memmap[i])
-                code_row = unpack_codes_single(packed_row)
+                packed_chunk = np.asarray(codes_memmap[start:end])
+                codes_chunk = np.empty((len(packed_chunk), M), dtype=np.uint8)
+                # unpack row by row to avoid a large temporary
+                for idx, packed_row in enumerate(packed_chunk):
+                    codes_chunk[idx] = unpack_codes_single(packed_row)
             else:
-                code_row = np.asarray(codes_memmap[i])
-            
-            dist = 0.0
-            for m in range(M):
-                dist += dist_table[m][code_row[m]]
+                codes_chunk = np.asarray(codes_memmap[start:end])
 
-            if len(current_results) < Z:
-                heapq.heappush(current_results, (-dist, vec_id))
-            else:
-                if -dist > current_results[0][0]:
-                    heapq.heapreplace(current_results, (-dist, vec_id))
+            for i, vec_id in enumerate(chunk_ids):
+                code_row = codes_chunk[i]
+                dist = 0.0
+                for m in range(M):
+                    dist += dist_table[m][code_row[m]]
 
+                if len(current_results) < Z:
+                    heapq.heappush(current_results, (-dist, vec_id))
+                else:
+                    if -dist > current_results[0][0]:
+                        heapq.heapreplace(current_results, (-dist, vec_id))
+
+            del codes_chunk
+            if PQ_K <= 16:
+                del packed_chunk
+            gc.collect()
+
+        # explicitly close memmap to drop mapping pages sooner
+        if hasattr(codes_memmap, "_mmap") and codes_memmap._mmap:
+            codes_memmap._mmap.close()
         del codes_memmap
         del vector_ids
 

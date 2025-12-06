@@ -4,6 +4,7 @@ import pickle
 import os
 import random
 import heapq
+import gc
 
 # Helper functions for memmap operations
 def save_memmap(filename, array):
@@ -231,6 +232,8 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
     del codebook
     del batch_codes
 
+    gc.collect()
+
     # Turn negative distances back to positive and sort, inplace to save mem
     for i in range(len(current_results)):
         current_results[i] =(-current_results[i][0], current_results[i][1])
@@ -266,6 +269,8 @@ def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10,
             del vector
 
     del mmap_db
+
+    gc.collect()
     
     current_results.sort(key=lambda x: x[0], reverse=True)
     return current_results[:k]

@@ -6,6 +6,7 @@ import os
 import heapq
 import pickle
 import pq
+import gc
 
 M=7
 K=256
@@ -141,6 +142,7 @@ class IVF:
         del centroids
         topN_indices = np.argpartition(similarities, -nprobe,axis=1)[:, -nprobe:]
         del similarities
+        gc.collect()
         topN_indices_1d = topN_indices.flatten()
         results = pq.top_k_results(self, query, topN_indices_1d, index_file_path, k=top_k, Z=Z)
         return [result[1] for result in results]

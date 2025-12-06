@@ -99,7 +99,7 @@ class VecDB:
         return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        return self.ivfflat.search(query,top_k=top_k, nprobe=15) #1M rows: k=1500, nprobe 15 -> Score (0,2.313)
+        return self.ivfflat.search(query,top_k=top_k, nprobe=10) #1M rows: k=1500, nprobe 15 -> Score (0,2.313)
                                                                  #10M rows: k=4000, nptobe=15 ->Score (0,2.072)
                                                                  #15M rows:
                                                                  #20M rows:

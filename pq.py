@@ -25,18 +25,16 @@ def pack_codes(codes: np.ndarray) -> np.ndarray:
     packed = (codes[:, 0::2] << 4) | (codes[:, 1::2])
     return packed
 
-def unpack_codes(packed_codes: np.ndarray) -> np.ndarray:
-    N, M_packed = packed_codes.shape
+def unpack_codes_single(packed_row: np.ndarray) -> np.ndarray:
+    packed_row = np.asarray(packed_row).flatten()
+    M_packed = len(packed_row)
     M = M_packed * 2
     
-    unpacked = np.zeros((N, M), dtype=np.uint8)
-    
-    unpacked[:, 0::2] = packed_codes >> 4
-    
-    unpacked[:, 1::2] = packed_codes & 0x0F
+    unpacked = np.empty(M, dtype=np.uint8)
+    unpacked[0::2] = packed_row >> 4
+    unpacked[1::2] = packed_row & 0x0F
     
     return unpacked
-
 
 def train(ivfflat, M=8, K=256, SAMPLE_RATIO=0.1):
     centroids = ivfflat._load_centroids()
@@ -177,8 +175,12 @@ def compute_distance_table(query_vector, centroid_vector, codebook):
 
 
 def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_path, Z=200):
-    codebook = load_memmap(os.path.join(index_file_path, "pq_codebook.dat"))
+    codebook_memmap = load_memmap(os.path.join(index_file_path, "pq_codebook.dat"))
+    codebook = np.array(codebook_memmap)
+    del codebook_memmap
+    
     PQ_K = codebook.shape[1]
+    M = codebook.shape[0]
 
     current_results = []
 
@@ -191,17 +193,18 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
             continue
 
         codes_path = os.path.join(index_file_path, f"pq_codes_cluster_{bucket_id}.dat")
-        if PQ_K <= 16:
-            batch_packed = load_memmap(codes_path, mode='r')
-            batch_codes = unpack_codes(batch_packed)
-        else:
-            batch_codes = load_memmap(codes_path, mode='r')
+        codes_memmap = load_memmap(codes_path, mode='r')
 
+        # Process each vector individually to avoid loading entire cluster
         for i, vec_id in enumerate(vector_ids):
-            code_row = batch_codes[i]
+            if PQ_K <= 16:
+                packed_row = np.asarray(codes_memmap[i])
+                code_row = unpack_codes_single(packed_row)
+            else:
+                code_row = np.asarray(codes_memmap[i])
+            
             dist = 0.0
-
-            for m in range(len(code_row)):
+            for m in range(M):
                 dist += dist_table[m][code_row[m]]
 
             if len(current_results) < Z:
@@ -210,14 +213,12 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
                 if -dist > current_results[0][0]:
                     heapq.heapreplace(current_results, (-dist, vec_id))
 
-        if PQ_K <= 16:
-            del batch_packed
-        del batch_codes
-
+        del codes_memmap
         del vector_ids
 
     del codebook
 
+    # Convert heap to sorted list
     for i in range(len(current_results)):
         current_results[i] = (-current_results[i][0], current_results[i][1])
 
@@ -225,33 +226,27 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
 
     return current_results
 
-def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):
-    current_results = retrieve(ivfflat, query_vector, nearest_buckets, ivfflat._load_centroids(), index_file_path, Z=Z)
-
-    num_records = ivfflat._get_num_records()
-    mmap_db = np.memmap(ivfflat.db_path, dtype=np.float32, mode='r', shape=(num_records, ivfflat.vecd))
+def top_k_results(ivfflat, query_vector, nearest_buckets, centroids, index_file_path, k=10, Z=200):
+    # Use pre-loaded centroids instead of loading again
+    current_results = retrieve(ivfflat, query_vector, nearest_buckets, centroids, index_file_path, Z=Z)
 
     query_vector = np.asarray(query_vector).flatten()
     norm_query = np.linalg.norm(query_vector)
 
     for i in range(len(current_results)):
-            _, vec_id = current_results[i]
-            
-            vector = np.array(mmap_db[vec_id]) 
+        _, vec_id = current_results[i]
+        
+        vector = ivfflat._getRow(vec_id)
 
-            dot_product = np.dot(query_vector, vector)
-            norm_vector = np.linalg.norm(vector)
-            
-            if norm_query == 0 or norm_vector == 0:
-                cosine_similarity = 0
-            else:
-                cosine_similarity = dot_product / (norm_query * norm_vector)
+        dot_product = np.dot(query_vector, vector)
+        norm_vector = np.linalg.norm(vector)
+        
+        if norm_query == 0 or norm_vector == 0:
+            cosine_similarity = 0
+        else:
+            cosine_similarity = dot_product / (norm_query * norm_vector)
 
-            current_results[i] = (cosine_similarity, vec_id)
-            
-            del vector
-
-    del mmap_db
+        current_results[i] = (cosine_similarity, vec_id)
     
     current_results.sort(key=lambda x: x[0], reverse=True)
     return current_results[:k]

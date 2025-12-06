@@ -3,9 +3,8 @@ import numpy as np
 from vec_db import VecDB
 import time
 from dataclasses import dataclass
-from typing import List, Optional
-
-from memory_logging import MemoryReporter, make_reporter
+from typing import List
+from memory_profiler import memory_usage
 
 @dataclass
 class Result:
@@ -14,31 +13,29 @@ class Result:
     db_ids: List[int]
     actual_ids: List[int]
 
-def run_queries(db, np_rows, top_k, num_runs, reporter: Optional[MemoryReporter] = None):
+def run_queries(db, np_rows, top_k, num_runs):
     results = []
-    max_memory = -1
-    reporter = reporter or make_reporter(top_lines=20)
+    max_memory=-1
     for i in range(num_runs):
         query = np.random.random((1,64))
         
-        with reporter.track(f"retrieve_query_{i}"):
-            tic = time.time()
-            db_ids = db.retrieve(query, top_k)
-            toc = time.time()
+        memoryBefore=max(memory_usage())
+        tic = time.time()
+        db_ids = db.retrieve(query, top_k)
+        toc = time.time()
+        memoryAfter=max(memory_usage())
+        memoryOccupied=memoryAfter-memoryBefore
         run_time = toc - tic
-
-        with reporter.track(f"ground_truth_{i}"):
-            tic = time.time()
-            actual_ids = np.argsort(np_rows.dot(query.T).T / (np.linalg.norm(np_rows, axis=1) * np.linalg.norm(query)), axis= 1).squeeze().tolist()[::-1]
-            toc = time.time()
-
-        if reporter.events:
-            for ev in reporter.events[-2:]:
-                if ev.rss_delta() > max_memory:
-                    max_memory = ev.rss_delta()
-        last_delta = reporter.events[-1].rss_delta() if reporter.events else 0
-        print(f"for query {i} time: {run_time} , last rss delta: {last_delta}, max rss delta: {max_memory}")
-
+        if memoryOccupied > max_memory:
+            max_memory=memoryOccupied
+        print(f"for query {i} time: {run_time} , memory used: {memoryOccupied}")
+        
+        tic = time.time()
+        actual_ids = np.argsort(np_rows.dot(query.T).T / (np.linalg.norm(np_rows, axis=1) * np.linalg.norm(query)), axis= 1).squeeze().tolist()[::-1]
+        #print(actual_ids)
+        toc = time.time()
+        np_run_time = toc - tic
+        
         results.append(Result(run_time, top_k, db_ids, actual_ids))
     #print(f"Max memory: {max_memory}")
     return results, max_memory
@@ -116,13 +113,10 @@ def create_other_DB_size(input_file, output_file, target_rows, embedding_dim = D
     print(f"Success! Saved first {target_rows} rows to {output_file}")
 
 if __name__ == "__main__":
-    reporter = make_reporter(top_lines=25)
-    db = VecDB(db_size = 2*(10**7), reporter=reporter)
+    db = VecDB(db_size = 2*(10**7))
 
     all_db = db.get_all_rows()
 
-    res, _ = run_queries(db, all_db, 5, 10, reporter=reporter)
+    res, _ = run_queries(db, all_db, 5, 10)
     print(eval(res))
-    reporter.summary()
-    reporter.stop()
     #print(f"memory used: {memory}")

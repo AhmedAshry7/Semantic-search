@@ -99,11 +99,15 @@ class VecDB:
         return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-        return self.ivfflat.search(query,top_k=top_k, nprobe=10) #1M rows: k=1500, nprobe 15 -> Score (0,2.313)
-                                                                 #10M rows: k=4000, nptobe=15 ->Score (0,2.072)
-                                                                 #15M rows:
-                                                                 #20M rows:
-        """         
+            if self.db_size<10**7:
+                nProbe=25
+            elif self.db_size<2*10**7:
+                nProbe=10
+            else:
+                nProbe=15
+            return self.ivfflat.search(query,top_k=top_k, nprobe=nProbe) 
+    
+    """         
         scores = []
         num_records = self._get_num_records()
         # here we assume that the row number is the ID of each vector

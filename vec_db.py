@@ -12,7 +12,7 @@ class VecDB:
         self.db_path = database_file_path
         self.index_path = index_file_path
         self.ivfflat = IVF(db_path=self.db_path, index_path=self.index_path, vecd=DIMENSION, k=4000, seed=DB_SEED_NUMBER, cpuCores=14, maxRam=50 * 1024 * 1024)
-        self.db_size = db_size
+        
         if new_db:
             if db_size is None:
                 raise ValueError("You need to provide the size of the database")
@@ -99,17 +99,11 @@ class VecDB:
         return np.array(vectors)
     
     def retrieve(self, query: Annotated[np.ndarray, (1, DIMENSION)], top_k = 5):
-            if self.db_size is None:
-                nProbe=10
-            elif self.db_size<10**7:
-                nProbe=25
-            elif self.db_size<2*10**7:
-                nProbe=10
-            else:
-                nProbe=15
-            return self.ivfflat.search(query,top_k=top_k, nprobe=nProbe) 
-    
-    """         
+        return self.ivfflat.search(query,top_k=top_k, nprobe=15) #1M rows: k=1500, nprobe 15 -> Score (0,2.313)
+                                                                 #10M rows: k=4000, nptobe=15 ->Score (0,2.072)
+                                                                 #15M rows:
+                                                                 #20M rows:
+        """         
         scores = []
         num_records = self._get_num_records()
         # here we assume that the row number is the ID of each vector

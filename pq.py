@@ -40,49 +40,47 @@ def unpack_codes(packed_codes: np.ndarray) -> np.ndarray:
 
 def train(ivfflat, M=8, K=256, SAMPLE_RATIO=0.1):
     centroids = ivfflat._load_centroids()
-    
+
     norm_centroids = np.linalg.norm(centroids, axis=1, keepdims=True)
     normalized_centroids = centroids / norm_centroids
-    
-    D = ivfflat.vecd 
+
+    D = ivfflat.vecd
     assert D % M == 0, "DIMENSION must be divisible by M"
     sub_dim = D // M
-    
+
     sub_matrices = [[] for _ in range(M)]
-    
+
     for cluster_id in range(ivfflat.k):
         print(f"Processing cluster {cluster_id + 1}/{ivfflat.k}...")
-        
+
         vector_ids = ivfflat._load_cluster(cluster_id)
-        
+
         if len(vector_ids) == 0:
             continue
-        
+
         # Randomly sample a % of vectors from this cluster
         sample_size = max(1, int(len(vector_ids) * SAMPLE_RATIO))
         sampled_ids = random.sample(list(vector_ids), sample_size)
-        
+
         centroid = normalized_centroids[cluster_id]
-        
+
         for vec_id in sampled_ids:
             vector = ivfflat._getRow(vec_id)
-            
+
             norm_vec = np.linalg.norm(vector)
             if norm_vec > 0:
                 normalized_vector = vector / norm_vec
             else:
                 normalized_vector = vector
-            
+
             residual = normalized_vector - centroid
-            
+
             for m in range(M):
                 subvector = residual[m * sub_dim: (m + 1) * sub_dim]
                 sub_matrices[m].append(subvector)
-    
+
     for m in range(M):
         sub_matrices[m] = np.array(sub_matrices[m], dtype=np.float32)
-    
-    N = len(sub_matrices[0]) 
 
     codebook = np.zeros((M, K, sub_dim), dtype=np.float32)
 
@@ -93,62 +91,61 @@ def train(ivfflat, M=8, K=256, SAMPLE_RATIO=0.1):
         codebook[i] = kmeans.cluster_centers_.astype(np.float32)
 
     print(f"Codebook shape: {codebook.shape}")
-    
-    save_memmap("index.dat/pq_codebook.dat", codebook)
+
+    codebook_path = os.path.join(ivfflat.index_path, "pq_codebook.dat")
+    save_memmap(codebook_path, codebook)
     print("Codebook saved to disk.")
     initialize_database(ivfflat, K)
-    
+
 
 def initialize_database(ivfflat, PQ_K):
-    """
-    Encode all vectors using PQ codes, processing one cluster at a time.
-    """
-    codebook = load_memmap("index.dat/pq_codebook.dat")
-    
+    """Encode vectors and store PQ codes per cluster to avoid a single large file."""
+    codebook_path = os.path.join(ivfflat.index_path, "pq_codebook.dat")
+    codebook = load_memmap(codebook_path)
+
     centroids = ivfflat._load_centroids()
-    
+
     norm_centroids = np.linalg.norm(centroids, axis=1, keepdims=True)
     normalized_centroids = centroids / norm_centroids
 
     M = codebook.shape[0]
     sub_dim = codebook.shape[2]
-    
-    N = ivfflat._get_num_records()
-    codes = np.zeros((N, M), dtype=np.uint8)
-    
+
     for cluster_id in range(ivfflat.k):
         print(f"Encoding cluster {cluster_id + 1}/{ivfflat.k}...")
-        
+
         vector_ids = ivfflat._load_cluster(cluster_id)
-        
+
         if len(vector_ids) == 0:
             continue
-        
+
         centroid = normalized_centroids[cluster_id]
-        
-        for vec_id in vector_ids:
+        codes_cluster = np.zeros((len(vector_ids), M), dtype=np.uint8)
+
+        for local_idx, vec_id in enumerate(vector_ids):
             vector = ivfflat._getRow(vec_id)
-            
+
             norm_vec = np.linalg.norm(vector)
             if norm_vec > 0:
                 normalized_vector = vector / norm_vec
             else:
                 normalized_vector = vector
-            
+
             residual = normalized_vector - centroid
-            
+
             for m in range(M):
                 subvector = residual[m * sub_dim: (m + 1) * sub_dim]
                 distances = np.linalg.norm(codebook[m] - subvector, axis=1)
-                codes[vec_id, m] = np.argmin(distances)
-    
-    if PQ_K <= 16:
-        print(f"Packing codes (M={M} -> {M//2} bytes)...")
-        final_codes = pack_codes(codes)
-        save_memmap("index.dat/pq_codes.dat", final_codes)
-    else:
-        print(f"Saving codes directly (PQ_K={PQ_K} uses full 8 bits)...")
-        save_memmap("index.dat/pq_codes.dat", codes)
+                codes_cluster[local_idx, m] = np.argmin(distances)
+
+        codes_path = os.path.join(ivfflat.index_path, f"pq_codes_cluster_{cluster_id}.dat")
+        if PQ_K <= 16:
+            print(f"Packing cluster {cluster_id} codes (M={M} -> {M//2} bytes)...")
+            final_codes = pack_codes(codes_cluster)
+            save_memmap(codes_path, final_codes)
+        else:
+            print(f"Saving cluster {cluster_id} codes directly (PQ_K={PQ_K} uses full 8 bits)...")
+            save_memmap(codes_path, codes_cluster)
 
     return codebook
 
@@ -180,63 +177,50 @@ def compute_distance_table(query_vector, centroid_vector, codebook):
 
 
 def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_path, Z=200):
-    codebook = load_memmap(index_file_path + "/pq_codebook.dat")
-    PQ_K = codebook.shape[1] 
+    codebook = load_memmap(os.path.join(index_file_path, "pq_codebook.dat"))
+    PQ_K = codebook.shape[1]
 
-    # Don't unpack all causes mem leak
-    if PQ_K <= 16:
-        packed_codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r') 
-    else:
-        codes_mmap = load_memmap(index_file_path + "/pq_codes.dat", mode='r')
-
-    current_results = [] 
+    current_results = []
 
     for bucket_id in nearest_buckets:
         centroid_vector = all_centroids[bucket_id]
         dist_table = compute_distance_table(query_vector, centroid_vector, codebook)
         vector_ids = ivfflat._load_cluster(bucket_id)
-        
-        if len(vector_ids) == 0: continue
 
+        if len(vector_ids) == 0:
+            continue
+
+        codes_path = os.path.join(index_file_path, f"pq_codes_cluster_{bucket_id}.dat")
         if PQ_K <= 16:
-            # Just unpack the specific rows
-            batch_packed = packed_codes_mmap[vector_ids] 
+            batch_packed = load_memmap(codes_path, mode='r')
             batch_codes = unpack_codes(batch_packed)
         else:
-            # Just read the specific rows
-            batch_codes = codes_mmap[vector_ids]
+            batch_codes = load_memmap(codes_path, mode='r')
 
         for i, vec_id in enumerate(vector_ids):
-            code_row = batch_codes[i] 
+            code_row = batch_codes[i]
             dist = 0.0
-            
-            for m in range(len(code_row)):  
+
+            for m in range(len(code_row)):
                 dist += dist_table[m][code_row[m]]
-            
-            # 1. If we haven't found Z items yet, just add it.
+
             if len(current_results) < Z:
                 heapq.heappush(current_results, (-dist, vec_id))
-            
             else:
                 if -dist > current_results[0][0]:
-                    #pops the worst and push the new one in one go
                     heapq.heapreplace(current_results, (-dist, vec_id))
-        
-    # CLEANUP
-    if PQ_K > 16:
-        del codes_mmap
-    else:
-        del packed_codes_mmap
+
+        if PQ_K <= 16:
+            del batch_packed
+        del batch_codes
 
     del codebook
-    del batch_codes
 
-    # Turn negative distances back to positive and sort, inplace to save mem
     for i in range(len(current_results)):
-        current_results[i] =(-current_results[i][0], current_results[i][1])
+        current_results[i] = (-current_results[i][0], current_results[i][1])
 
     current_results.sort(key=lambda x: x[0])
-    
+
     return current_results
 
 def top_k_results(ivfflat, query_vector, nearest_buckets, index_file_path, k=10, Z=200):

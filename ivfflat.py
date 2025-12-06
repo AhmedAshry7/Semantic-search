@@ -64,12 +64,12 @@ class IVF:
     
     
     def _get_num_records(self) -> int:
-        return os.path.getsize(self.db_path) // (70 * 4)
+        return os.path.getsize(self.db_path) // (self.vecd * 4)
     
-    def _getRow(self,id):
-        offset= id*self.vecd*4
-        vector=np.memmap(filename=self.db_path,dtype=np.float32, mode='r', offset=offset, shape=(1,self.vecd))
-        return(np.array(vector[0]))
+    def _getRow(self, id):
+        offset = np.int64(id) * np.int64(self.vecd) * np.int64(4)
+        vector = np.memmap(filename=self.db_path, dtype=np.float32, mode='r', offset=offset, shape=(1, self.vecd))
+        return np.array(vector[0])
     
     def _getAllRows(self):
         num_records=self._get_num_records()

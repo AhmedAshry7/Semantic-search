@@ -214,6 +214,8 @@ def retrieve(ivfflat, query_vector, nearest_buckets, all_centroids, index_file_p
             del batch_packed
         del batch_codes
 
+        del vector_ids
+
     del codebook
 
     for i in range(len(current_results)):

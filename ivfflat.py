@@ -33,13 +33,11 @@ class IVF:
             pickle.dump(centroids, centroids_file)
 
     def _save_clusters(self, clusters: List[np.ndarray]) -> None:
-
         if not os.path.exists(self.index_path):
             os.makedirs(self.index_path)
         for cluster_id, cluster in enumerate(clusters):
-            cluster_file_path = os.path.join(self.index_path, f"cluster_{cluster_id}.pkl")
-            with open(cluster_file_path, "wb") as cluster_file:
-                pickle.dump(cluster, cluster_file)
+            cluster_file_path = os.path.join(self.index_path, f"cluster_{cluster_id}.npy")
+            np.save(cluster_file_path, np.array(cluster, dtype=np.int32))
 
     def _load_centroids(self) -> np.ndarray:
 
@@ -49,11 +47,12 @@ class IVF:
         return centroids
     
     def _load_cluster(self, cluster_id: int) -> np.ndarray:
-
-        cluster_file_path = os.path.join(self.index_path, f"cluster_{cluster_id}.pkl")
-        with open(cluster_file_path, "rb") as cluster_file:
-            cluster = pickle.load(cluster_file)
-        return cluster 
+        cluster_file_path = os.path.join(self.index_path, f"cluster_{cluster_id}.npy")
+        try:
+            cluster = np.load(cluster_file_path)
+        except FileNotFoundError:
+            return np.array([], dtype=np.int32)
+        return cluster
 
     def _load_clusters(self) -> List[np.ndarray]:
   
